@@ -1,4 +1,4 @@
-function [f, X, Y] = admm_simple(M, options)
+function [f, X, Y] = admm_simple_2block(M, options)
 
 %feed in some options
 rho = options.rho; 
@@ -31,13 +31,7 @@ fprintf('-----------------------------------------------------------------------
 while(L_iter >= augLag_stop && Mf_iter\M_fro>M_stop)
     L_k = L_kp1; 
     Yp= Block1_update(Z, X, Lambda, rho, Y); 
-    [Xp, Zp] = Block2_update(Yp,Lambda, rho,M, X,Z);
-    
-%Uncomment below for 3-block admm
-%     Xp = Block2_update(Yp,Z, Lambda, rho); 
-%     Zp = (M-Lambda+rho*Xp*Yp)/(1+rho); 
-    
-    
+    [Xp, Zp] = Block2_update(Yp,Lambda, rho,M, X,Z); 
     
     Lambdap = Lambda + (Zp - Xp*Yp)*rho;
     
@@ -68,8 +62,3 @@ end
 
 
 
-function L = augLag(X, Y, Z, M, Lambda, rho)
-
-L = .5*norm(Z - M, 'fro')^2 + trace(Lambda'*(Z - X*Y)) + rho/2*norm(Z - X*Y, 'fro')^2; 
-
-end
