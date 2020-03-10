@@ -1,6 +1,6 @@
 function nmf_test()
 %note as of 3/6 we are still at pseudo-code levels
-
+rng(5);
 %Generate Data (using section 4.2 conditions)
 N = 100; %data row dimension (5000 in paper)
 Q = N; %data column dimension
@@ -16,7 +16,7 @@ M = W*H + cN;
 
 
 %initialize things in section 4.2 of NMFbilinearADMM.pdf
-admm_simp.rho = 50; %1.1
+admm_simp.rho =1.1; %1.1
 
 %subproblem routine options (for now these will be with CVX since they are
 %convex)

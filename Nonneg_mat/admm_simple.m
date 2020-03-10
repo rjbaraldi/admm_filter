@@ -28,15 +28,18 @@ fprintf('%s  %s  %s   %s   %s  %s  %s\n',...
 fprintf('----------------------------------------------------------------------------------------------------------\n');
     
 %using CVX for now as a subproblem
-while(L_iter >= augLag_stop && Mf_iter\M_fro>M_stop && iter<100)
+while(L_iter >= augLag_stop && Mf_iter\M_fro>M_stop)
     L_k = L_kp1; 
     Yp= Block1_update(Z, X, Lambda, rho, Y); 
-    [Xp, Zp] = Block2_update(Yp, Lambda, rho, X,Z);
+    [Xp, Zp] = Block2_update(Yp,Lambda, rho,M, X,Z);
     
 %Uncomment below for 3-block admm
 %     Xp = Block2_update(Yp,Z, Lambda, rho); 
-%     Zp = (Lambda -M -rho*Xp*Yp)/(1-rho); 
-    Lambdap = Lambda - (Zp - Xp*Yp)/rho; %disp('X');
+%     Zp = (M-Lambda+rho*Xp*Yp)/(1+rho); 
+    
+    
+    
+    Lambdap = Lambda + (Zp - Xp*Yp)*rho;
     
     
     L_kp1 = augLag(Xp, Yp, Zp, M, Lambdap, rho);
@@ -44,7 +47,7 @@ while(L_iter >= augLag_stop && Mf_iter\M_fro>M_stop && iter<100)
     Mf_iter = norm(M - Xp*Yp,'fro');
     
     fprintf('%i    %1.4e      %1.4e         %1.4e     %1.4e    %1.4e      %1.4e\n',...
-    iter, L_iter, Mf_iter, norm(Yp-Y,'fro'), norm(Xp-X,'fro'), norm(Zp-Z,'fro'), norm(Lambdap-Lambda,'fro'));
+    iter, L_iter, Mf_iter/M_fro, norm(Yp-Y,'fro'), norm(Xp-X,'fro'), norm(Zp-Z,'fro'), norm(Lambdap-Lambda,'fro'));
     
     
     
