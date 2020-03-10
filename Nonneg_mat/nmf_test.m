@@ -2,10 +2,10 @@ function nmf_test()
 %note as of 3/6 we are still at pseudo-code levels
 
 %Generate Data (using section 4.2 conditions)
-N = 5000; %data row dimension
+N = 100; %data row dimension (5000 in paper)
 Q = N; %data column dimension
-R = 1000; %real data rank cutoff
-K = 200; %low-rank cutoff
+R = Q/10; %real data rank cutoff (1000 in paper)
+K = Q/2; %low-rank cutoff (200 in paper)
 
 %M = WH + N
 %   where W is \R^{NxR}, H = \R^{RxQ}, cN =\R^{NxQ} but uniform(0,1) iid
@@ -16,7 +16,7 @@ M = W*H + cN;
 
 
 %initialize things in section 4.2 of NMFbilinearADMM.pdf
-admm_simp.rho = 1.1;
+admm_simp.rho = 50; %1.1
 
 %subproblem routine options (for now these will be with CVX since they are
 %convex)
@@ -28,6 +28,7 @@ admm_simp.dims =[N, Q, R K];
 
 
 [f, X,Y] = admm_simple(M, admm_simp); 
+disp(f)
 
 
 end

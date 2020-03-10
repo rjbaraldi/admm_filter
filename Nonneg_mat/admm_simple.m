@@ -1,4 +1,4 @@
-function admm_simple(M, options)
+function [f, X, Y] = admm_simple(M, options)
 
 %feed in some options
 rho = options.rho; 
@@ -7,50 +7,66 @@ beta = options.beta;
 augLag_stop = options.augLag_stop; 
 M_stop = options.dataM_stop; 
 
-[N, Q, R, K] = options.dims; 
+N = options.dims(1);
+Q = options.dims(2); 
+R = options.dims(3); 
+K = options.dims(4); 
 
 Z = randn([N,Q]); 
 X = randn([N,K]); 
+Y = randn([K,Q]); 
 Lambda = rand([N,Q]); 
 
-L_kp1 = augLag(Z, M, X, Y, Lambda); 
-L_k = 0; 
+L_kp1 = augLag(X, Y, Z, M, Lambda, rho);  
+L_iter = Inf; 
+M_fro = norm(M, 'fro'); 
+Mf_iter = norm(M - X*Y, 'fro'); 
+iter = 1; 
 
-
+fprintf('%s  %s  %s   %s   %s  %s  %s\n',...
+    'Iter', 'Lp - Lp+', '||M - XY||_F/||M||_F', '||Y+ - Y||_F', '||X+ - X||_F', '||Z+ - Z||_F', '||Lambda+ - Lambda||_F'); 
+fprintf('----------------------------------------------------------------------------------------------------------\n');
+    
 %using CVX for now as a subproblem
-while(L_kp1 - L_k >= augLag_stop && norm(M - X*Y,'fro')\M_fro<M_stop)
+while(L_iter >= augLag_stop && Mf_iter\M_fro>M_stop && iter<100)
+    L_k = L_kp1; 
+    Yp= Block1_update(Z, X, Lambda, rho, Y); 
+    [Xp, Zp] = Block2_update(Yp, Lambda, rho, X,Z);
     
-    Y = Yplus(Z, X, Lambda,rho); 
+%Uncomment below for 3-block admm
+%     Xp = Block2_update(Yp,Z, Lambda, rho); 
+%     Zp = (Lambda -M -rho*Xp*Yp)/(1-rho); 
+    Lambdap = Lambda - (Zp - Xp*Yp)/rho; %disp('X');
+    
+    
+    L_kp1 = augLag(Xp, Yp, Zp, M, Lambdap, rho);
+    L_iter = abs(L_k - L_kp1); 
+    Mf_iter = norm(M - Xp*Yp,'fro');
+    
+    fprintf('%i    %1.4e      %1.4e         %1.4e     %1.4e    %1.4e      %1.4e\n',...
+    iter, L_iter, Mf_iter, norm(Yp-Y,'fro'), norm(Xp-X,'fro'), norm(Zp-Z,'fro'), norm(Lambdap-Lambda,'fro'));
     
     
     
+    X = Xp; 
+    Y = Yp; 
+    Z = Zp; 
+    Lambda = Lambdap; 
+    iter = iter+1; 
+    
+     
+
+end
+
+f = norm(X*Y - M, 'fro')^2; 
+
+
 end
 
 
 
+function L = augLag(X, Y, Z, M, Lambda, rho)
 
-end
+L = .5*norm(Z - M, 'fro')^2 + trace(Lambda'*(Z - X*Y)) + rho/2*norm(Z - X*Y, 'fro')^2; 
 
-
-
-function Yplus(Z, X, Lambda, rho)
-
-N, K = size(X); 
-% x = X(:);
-% z = z(:); 
-% lambda = Lambda(:); 
-% Id = eye(K); 
-% Id = vec(:); 
-
-
-cvx_begin quiet
-    variable Y(N,K)
-    minimize(rho/2*sum(sum_square_abs(Z - X*Y + Lambda/rho)))
-    subject to
-        Y(:)>=0
-  
-cvx_end
-    
-    
-    
 end
