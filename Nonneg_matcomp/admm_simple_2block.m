@@ -1,4 +1,4 @@
-function [f, X, Y] = admm_simple_3block(M, options)
+function [f, X, Y] = admm_simple_2block(M, options)
 
 %feed in some options
 rho = options.rho; 
@@ -6,6 +6,7 @@ alpha = options.alpha;
 beta = options.beta; 
 augLag_stop = options.augLag_stop; 
 M_stop = options.dataM_stop; 
+P_omega = options.P_omega; 
 
 N = options.dims(1);
 Q = options.dims(2); 
@@ -15,12 +16,13 @@ K = options.dims(4);
 Z = randn([N,Q]); 
 X = randn([N,K]); 
 Y = randn([K,Q]); 
-Lambda = rand([N,Q]); 
+W = randn([N,Q]); 
+Lambda = randn([N,Q]); 
 
 L_kp1 = augLag(X, Y, Z, M, Lambda, rho);  
 L_iter = Inf; 
-M_fro = norm(M, 'fro'); 
-Mf_iter = norm(M - X*Y, 'fro'); 
+W_fro = norm(W, 'fro'); 
+Wf_iter = norm(W - X*Y, 'fro'); 
 iter = 1; 
 
 fprintf('%s  %s  %s   %s   %s  %s  %s\n',...
@@ -28,24 +30,21 @@ fprintf('%s  %s  %s   %s   %s  %s  %s\n',...
 fprintf('----------------------------------------------------------------------------------------------------------\n');
     
 %using CVX for now as a subproblem
-while(L_iter >= augLag_stop && Mf_iter\M_fro>M_stop)
+while(L_iter >= augLag_stop && Wf_iter\W_fro>M_stop)
     L_k = L_kp1; 
-    Yp= Block1_update(Z, X, Lambda, rho, Y); 
-    Zp = (M-Lambda+rho*X*Yp)/(1+rho); 
-    Xp = Block3_update(Yp,Zp, Lambda, rho); 
-    
-    
-    
+    [Yp, Wp] = Block1_update(Z, X, Lambda, rho,M, Y, W, P_omega);  
+    [Xp, Zp] = Block2_update(Yp,Wp, Lambda, rho, X,Z); 
     
     Lambdap = Lambda + (Zp - Xp*Yp)*rho;
     
     
     L_kp1 = augLag(Xp, Yp, Zp, M, Lambdap, rho);
     L_iter = abs(L_k - L_kp1); 
-    Mf_iter = norm(M - Xp*Yp,'fro');
+    Wf_iter = norm(Wp - Xp*Yp,'fro');
+    W_fro = norm(Wp, 'fro');
     
     fprintf('%i    %1.4e      %1.4e         %1.4e     %1.4e    %1.4e      %1.4e\n',...
-    iter, L_iter, Mf_iter/M_fro, norm(Yp-Y,'fro'), norm(Xp-X,'fro'), norm(Zp-Z,'fro'), norm(Lambdap-Lambda,'fro'));
+    iter, L_iter, Wf_iter/W_fro, norm(Yp-Y,'fro'), norm(Xp-X,'fro'), norm(Zp-Z,'fro'), norm(Lambdap-Lambda,'fro'));
     
     
     
@@ -63,4 +62,6 @@ f = norm(X*Y - M, 'fro')^2;
 
 
 end
+
+
 
