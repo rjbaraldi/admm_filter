@@ -44,7 +44,7 @@ while(L_iter >= augLag_stop && Wf_iter\W_fro>M_stop)
     Lambdap = Lambda + (Zp - Xp*Yp)*rho;
     
     
-    L_kp1 = augLag(Xp, Yp, Zp, M, Lambdap, rho);
+    L_kp1 = augLag(Xp, Yp, Zp, Wp, Lambdap, rho);
     L_iter = abs(L_k - L_kp1); 
     Wf_iter = norm(Wp - Xp*Yp,'fro');
     W_fro = norm(Wp, 'fro');
