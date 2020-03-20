@@ -1,20 +1,23 @@
-function [xk, omega, eta] = admm_filter_2block(M, options, funcB1, ProjB1, funcB2, ProjB2, stop_crit)
+function [xk, Filter] = admm_filter_2block(M, options, funcB1, ProjB1, funcB2, ProjB2, stop_crit, lnSrch)
 
 %feed in some options
 rho = options.rho; 
 % alpha = options.alpha; 
 % beta = options.beta; 
+IterMax = options.IterMax; 
 augLag_stop = options.augLag_stop; 
 M_stop = options.dataM_stop; 
 
 N = options.dims(1);
 Q = options.dims(2); 
 % R = options.dims(3); 
-K = options.dims(4); 
+K = options.dims(4);
+gamma = options.gamma; 
+beta = options.beta; 
 
 % xk = [X(:); Y(:); Z(:); W(:)];
 xk = options.x; 
-Lambda = randn([N,Q]); 
+Lambdak = randn([N,Q]); 
 
 
 
@@ -40,9 +43,9 @@ solver_opts.optTol = 1e-3;
 solver_opts.numDiff = 0; %1 does FD differentiation, 2 does complex fd
 
 
-[L_kp1,~] = augLag(xk, Lambda, Lagopts);  
+[L_kp1,~] = augLag(xk, Lambdak, Lagopts);  
 L_iter = Inf; 
-[OptTol, ~] = stop_crit(xk, Lambda, Lagopts); 
+[OptTol, ~] = stop_crit(xk, Lambdak, Lagopts); 
 k = 1; 
 
 
@@ -50,57 +53,65 @@ fprintf('%s  %s  %s   %s   %s  %s \n',...
     'Iter', 'Lp - Lp+', '||M - XY||_F/||M||_F', '||x+ - x||_F', '||Lambda+ - Lambda||_F', 'rho-status'); 
 fprintf('------------------------------------------------------------------------------------------------\n');
     
-omega = omega_comp(xk,Lambda, Lagopts); 
-eta = eta_comp(xk, Lagopts); 
+Filter = [eta_comp(xk, Lagopts);  omega_comp(xk,Lambdak, Lagopts)]; 
 
-while(L_iter >= augLag_stop && OptTol>M_stop) %keeping the same 'tolerance' constraints as in the paper
+while(L_iter >= augLag_stop && OptTol>M_stop && k<IterMax) %keeping the same 'tolerance' constraints as in the paper
     L_k = L_kp1; 
     
     %solve aug-Lag for two steps - such that sufficient reduction holds
-    omega_p = -Inf; 
-    eta_p = -Inf; 
     j = 0; 
-    while (omega_p > omega(k) && eta_p > eta(k)) || j==0 %j loop - cancels after one iteration right now
-        xj = minConf_SPG(@(b1)funcB1(b1, Lambda, Lagopts), xk, @(x)ProjB1(x,Lagopts), solver_opts);
-        xj = minConf_SPG(@(b2)funcB2(b2, Lambda, Lagopts), xj, @(x)ProjB2(x,Lagopts), solver_opts);  
+    xj = xk; 
+    Lambdaj = Lambdak; 
+    omegaj = omega_comp(xj,Lambdak, Lagopts); 
+    etaj = eta_comp(xj, Lagopts); 
+    UBD = max(min(Filter(2, :))/gamma, beta*min(Filter(1,:))); %not directly enforcing eta>0 but should be implicit I think? 
+    while (omegaj > Filter(2,end) && etaj > Filter(1,end)) || j==0 %j loop - cancels after one iteration right now
+        %block 1
+        xj = minConf_SPG(@(b1)funcB1(b1, Lambdaj, Lagopts), xj, @(x)ProjB1(x,Lagopts), solver_opts);
+        %block 2
+        xj = minConf_SPG(@(b2)funcB2(b2, Lambdaj, Lagopts), xj, @(x)ProjB2(x,Lagopts), solver_opts);  
         
         
-        omega = [omega, omega_comp(xj,Lambda, Lagopts)]; 
-        eta = [eta, eta_comp(xj, Lagopts)];
+        
+        %compute filter points for xj
+        etaj = eta_comp(xj, Lagopts); 
+%         omegaj = omega_comp(xj, Lambda, Lagopts); 
+        if etaj>UBD
+            %insert linesearch to find acceptable (etaj, omegaj) 
+            Lagopts.rho = 2*Lagopts.rho; %increase rho before doing conditions? 
+            [xj, alpha] = lnSrch(xj, UBD, Lagopts); %changed it to an eta search 
+            etaj = eta_comp(xj, Lagopts);
+            omegaj = omega_comp(xj, Lambdaj, Lagopts);
+            
+            fprintf('   etaj = %1.4e      UBD=%1.4e\n', etaj, UBD);
+            
+        end
+        etaj = eta_comp(xj, Lagopts); 
+        omegaj = omega_comp(xj, Lambdaj, Lagopts); 
+        [OptTol, Lambdaj] = stop_crit(xj, Lambdaj, Lagopts); 
         j = j+1; 
     
     end
-    xk = xj; 
-%     if norm(Zp - Xp*Yp, 'fro')^2<norm(Z - X*Y,'fro')^2
-%         Lambdap = Lambda + (Zp - Xp*Yp)*rho;
-%     else
-%         rho = 2*rho; 
-%     end
-    
-    
-%%%%%%%%%Note - below is the simple filter method currently in the paper
-%%%%%%%%%draft.
-%     
-%     
-%     if norm(Zp - Xp*Yp, 'fro')^2<norm(Z - X*Y,'fro')^2
 
-%     else
-%         rho = 2*rho; 
-%     end
     
     
-    [L_kp1, ~] = augLag(xk, Lambda, Lagopts);
+    
+    [L_kp1, ~] = augLag(xj, Lambdak, Lagopts);
     L_iter = abs(L_k - L_kp1); 
-    [OptTol, Lambdap] = stop_crit(xk, Lambda, Lagopts);
     
-%     fprintf('%i    %1.4e      %1.4e         %1.4e     %1.4e    %1.4e      %1.4e          %1.4e\n',...
-%     iter, L_iter, Wf_iter/W_fro, norm(Yp-Y,'fro'), norm(Xp-X,'fro'), norm(Zp-Z,'fro'), norm(Lambdap-Lambda,'fro'), rho);
-%     
+  
  fprintf('%i    %1.4e      %1.4e         %1.4e       %1.4e          %1.4e  \n',...
-    k, L_iter, OptTol, norm(xk - xj,'fro'), norm(Lambdap-Lambda,'fro'), rho);
+    k, L_iter, OptTol, norm(xk - xj,'fro'), norm(Lambdak-Lambdaj,'fro'), Lagopts.rho);
        
-   
-    Lambda = Lambdap; 
+
+
+  
+    %update etamin, omegamin
+    if etaj>0
+        Filter = [Filter, [etaj; omegaj]]; 
+    end
+    xk = xj; 
+    Lambdak = Lambdaj; 
     k = k+1; 
     
      
@@ -122,7 +133,7 @@ function eta = eta_comp(x, Lagopts)
         X = reshape(x(Lagopts.ind.X(1):Lagopts.ind.X(2)), [N,K]);
         Y = reshape(x(Lagopts.ind.Y(1):Lagopts.ind.Y(2)), [K,Q]); 
         Z = reshape(x(Lagopts.ind.Z(1):Lagopts.ind.Z(2)), [N,Q]);
-        eta = norm(Z - X*Y, 'fro'); 
+        eta = norm(Z - X*Y, 'fro')^2; 
         
 
 end

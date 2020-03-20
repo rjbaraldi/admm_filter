@@ -16,14 +16,19 @@ M = W*H + cN;
 
 
 %initialize things in section 4.2 of NMFbilinearADMM.pdf
-admm_simp.rho =1.1; %1.1
+admm_simp.rho = .1; %1.1
+admm_simp.gamma =.1; %.01/.1; %.01 seems to do a lot better without filter 
+admm_simp.beta = .9; %too much? eta<beta*eta_filter
+% % U is also a multiple of initial constraint violation
 
 %subproblem routine options (for now these will be with CVX since they are
 %convex)
 admm_simp.alpha = norm(W,'fro');
-admm_simp.beta = 1; 
+
 admm_simp.augLag_stop = 1e-4; %L_rho^(k+1) - L_rho^k <= augLag_stop
 admm_simp.dataM_stop = 1e-4; %||M - XY||_F/||M||_F <= dataM_stop for M data matrix
+admm_simp.IterMax = 1000; 
+admm_simp.UBD = norm(M, 'fro')^2*.05; 
 admm_simp.dims =[N, Q, R K];
 
 
@@ -54,7 +59,7 @@ admm_simp.LB = -inf(size(x)); admm_simp.LB(admm_simp.ind.X(1):admm_simp.ind.Y(2)
 admm_simp.UB = inf(size(x)); 
 
 
-[x, omega, eta] = admm_filter_2block(M, admm_simp, @YWupdate, @YWprojBound, @ZXupdate, @ZXprojBound, @stop_crit); 
+[x, Filter] = admm_filter_2block(M, admm_simp, @YWupdate, @YWprojBound, @ZXupdate, @ZXprojBound, @stop_crit, @lnsrchFcn); 
 
 
 
@@ -71,7 +76,7 @@ fprintf('%s    2-Block: %1.4e  \n',...
 fprintf('%s    2-Block: %1.4e  \n',...
     '||W - M||_F',norm(Wf - Xf*Yf,'fro'));
 
-loglog(eta, omega, '*')
+loglog(Filter(1,:), Filter(2,:), '*')
 set(gca, 'Fontsize', 22, 'Fontweight', 'Bold')
 xlabel('\eta')
 ylabel('\omega')
@@ -198,4 +203,96 @@ function [OptTol, Lambdap] = stop_crit(x, varargin)
         W_fro = norm(W, 'fro'); 
         Wf_iter = norm(W - X*Y, 'fro'); 
         OptTol = Wf_iter/W_fro; 
+end
+
+% function [x, alpha] = lnsrchFcn(x, Lambda, Lagopts)
+% N = Lagopts.dims(1);
+% Q = Lagopts.dims(2); 
+% % R = options.dims(3); 
+% K = Lagopts.dims(4);
+% % rho = Lagopts.rho; 
+% % [X(:); Y(:); Z(:); W(:)]
+% xi = Lagopts.ind.X; 
+% yi = Lagopts.ind.Y;
+% zi = Lagopts.ind.Z; 
+% wi = Lagopts.ind.W; 
+% 
+% 
+% X = reshape(x(xi(1):xi(2)), [N,K]); 
+% Y = reshape(x(yi(1):yi(2)), [K,Q]); 
+% Z = reshape(x(zi(1):zi(2)), [N,Q]); 
+% W = reshape(x(wi(1):wi(2)), [N,Q]);
+% 
+% 
+% D = X*Y - Z;
+% 
+% 
+% %do backtracking linesearch
+% tau = .95; 
+% c = .9; %control parameter
+% 
+% alpha = 1.0; 
+% 
+% [L1, gradL] = augLag(x, Lambda, Lagopts); 
+% 
+% p = [zeros(N*K+K*Q,1); D(:); zeros(N*Q,1)]; 
+% 
+% t = -c*gradL'*p; 
+% at = alpha*t;
+% 
+% [Lalpha,~] = augLag(x+alpha*p, Lambda, Lagopts); 
+% while L1-Lalpha < at
+%     alpha = tau*alpha;
+%     [Lalpha,~] = augLag(x+alpha*p, Lambda, Lagopts);
+%     at = alpha*t; 
+% %     fprintf('Infeasible eta; Conducting lnsrch. alpha=%1.4e\n', alpha); 
+% end
+% fprintf('Infeasible eta; Conducting lnsrch. alpha=%1.4e   ', alpha); 
+% x = x+alpha*p; 
+% 
+% end
+
+function [x, alpha] = lnsrchFcn(x, eta, Lagopts)
+N = Lagopts.dims(1);
+Q = Lagopts.dims(2); 
+% R = options.dims(3); 
+K = Lagopts.dims(4);
+% rho = Lagopts.rho; 
+% [X(:); Y(:); Z(:); W(:)]
+xi = Lagopts.ind.X; 
+yi = Lagopts.ind.Y;
+zi = Lagopts.ind.Z; 
+wi = Lagopts.ind.W; 
+
+
+X = reshape(x(xi(1):xi(2)), [N,K]); 
+Y = reshape(x(yi(1):yi(2)), [K,Q]); 
+Z = reshape(x(zi(1):zi(2)), [N,Q]); 
+W = reshape(x(wi(1):wi(2)), [N,Q]);
+
+D = X*Y - Z;
+
+
+% %do backtracking linesearch
+% tau = .95; 
+% c = .5; %control parameter
+
+alpha = 0.0; 
+
+L1 = norm(Z + alpha*D - X*Y, 'fro')^2; 
+% gradL = trace(D'*(Z + alpha*D-X*Y)); 
+% p = 1; 
+% t = -c*gradL'*p;
+% at = alpha*t;
+
+while L1 > eta
+    alpha = alpha+.01;
+    L1 =  norm(Z + alpha*D - X*Y, 'fro')^2; 
+
+end
+fprintf('Infeasible eta; Conducting lnsrch. alpha=%1.4e   ', alpha); 
+
+Zf = Z + alpha*D; 
+x = [X(:); Y(:); Zf(:); W(:)]; 
+
 end
