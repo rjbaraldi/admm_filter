@@ -1,5 +1,5 @@
 function nmfc_filter_test()
-%note as of 3/11 we are at decent running levels
+
 rng(5);
 %Generate Data (using section 4.2 conditions)
 N = 50; %data row dimension (5000 in paper)
@@ -17,7 +17,7 @@ M = W*H + cN;
 
 %initialize things in section 4.2 of NMFbilinearADMM.pdf
 admm_simp.rho = .1; %1.1
-admm_simp.gamma =.1; %.01/.1; %.01 seems to do a lot better without filter 
+admm_simp.gamma = .1; %.01/.1; %.01 seems to do a lot better without filter 
 admm_simp.beta = .9; %too much? eta<beta*eta_filter
 % % U is also a multiple of initial constraint violation
 
@@ -252,7 +252,7 @@ end
 % 
 % end
 
-function [x, alpha] = lnsrchFcn(x, eta, Lagopts)
+function [x, newFilter]= lnsrchFcn(x, Lambda, Lagopts, Filter)
 N = Lagopts.dims(1);
 Q = Lagopts.dims(2); 
 % R = options.dims(3); 
@@ -279,16 +279,28 @@ D = X*Y - Z;
 
 alpha = 0.0; 
 
-L1 = norm(Z + alpha*D - X*Y, 'fro')^2; 
+% L1 = norm(Z + alpha*D - X*Y, 'fro')^2;
 % gradL = trace(D'*(Z + alpha*D-X*Y)); 
 % p = 1; 
 % t = -c*gradL'*p;
 % at = alpha*t;
 
-while L1 > eta
-    alpha = alpha+.01;
-    L1 =  norm(Z + alpha*D - X*Y, 'fro')^2; 
+FA = 0; %0 if not acceptable, 1 if acceptable
 
+
+while ~FA %while not acceptable to filter, increase alpha until you are accepted
+    %should always finish this with a new filter acceptable point
+    alpha = alpha+.01;
+    
+    %update Z
+    Zf = Z + alpha*D;
+    
+    %compute eta and omega again
+    eta_alpha = eta_comp([X(:); Y(:); Zf(:); W(:)], Lagopts); 
+    omega_alpha = omega_comp([X(:); Y(:); Zf(:); W(:)], Lambda, Lagopts);
+    %determine if filter point is acceptable
+    [newFilter, FA] = filter_accept(Filter, eta_alpha, omega_alpha, Lagopts); 
+    
 end
 fprintf('Infeasible eta; Conducting lnsrch. alpha=%1.4e   ', alpha); 
 

@@ -31,7 +31,8 @@ Lagopts.rho = rho;
 Lagopts.Po = options.P_omega; 
 Lagopts.M = M; 
 Lagopts.LB = options.LB; 
-Lagopts.UB = options.UB; 
+Lagopts.UB = options.UB;
+Lagopts.beta = beta; 
 
 
 solver_opts.verbose=0;
@@ -56,6 +57,8 @@ fprintf('-----------------------------------------------------------------------
 Filter = [eta_comp(xk, Lagopts);  omega_comp(xk,Lambdak, Lagopts)]; 
 
 while(L_iter >= augLag_stop && OptTol>M_stop && k<IterMax) %keeping the same 'tolerance' constraints as in the paper
+    %should be a term for lagrange multipliers in here - FO stationarity:
+    %omega, eta \approx 0 (1e-4)
     L_k = L_kp1; 
     
     %solve aug-Lag for two steps - such that sufficient reduction holds
@@ -79,15 +82,17 @@ while(L_iter >= augLag_stop && OptTol>M_stop && k<IterMax) %keeping the same 'to
         if etaj>UBD
             %insert linesearch to find acceptable (etaj, omegaj) 
             Lagopts.rho = 2*Lagopts.rho; %increase rho before doing conditions? 
-            [xj, alpha] = lnSrch(xj, UBD, Lagopts); %changed it to an eta search 
+            [xj, Filter] = lnSrch(xj, Lambdaj, Lagopts, Filter); %changed it to an eta search 
             etaj = eta_comp(xj, Lagopts);
-            omegaj = omega_comp(xj, Lambdaj, Lagopts);
+%             omegaj = omega_comp(xj, Lambdaj, Lagopts);
             
             fprintf('   etaj = %1.4e      UBD=%1.4e\n', etaj, UBD);
             
-        end
-        etaj = eta_comp(xj, Lagopts); 
+        else
+%         etaj = eta_comp(xj, Lagopts);
         omegaj = omega_comp(xj, Lambdaj, Lagopts); 
+        
+        end
         [OptTol, Lambdaj] = stop_crit(xj, Lambdaj, Lagopts); 
         j = j+1; 
     
@@ -108,7 +113,10 @@ while(L_iter >= augLag_stop && OptTol>M_stop && k<IterMax) %keeping the same 'to
   
     %update etamin, omegamin
     if etaj>0
-        Filter = [Filter, [etaj; omegaj]]; 
+            %update filter entries here
+            [Filter, ~] = filter_up(Filter, etaj, omegaj);
+
+            
     end
     xk = xj; 
     Lambdak = Lambdaj; 
@@ -123,29 +131,15 @@ end
 
 end
 
-function eta = eta_comp(x, Lagopts)
-%compute eta = ||c(x)|| => ||Z - XY|| = 0 and Po(W - M)=0? 
-        N = Lagopts.dims(1);
-        Q = Lagopts.dims(2); 
-        % R = options.dims(3); 
-        K = Lagopts.dims(4);
-        
-        X = reshape(x(Lagopts.ind.X(1):Lagopts.ind.X(2)), [N,K]);
-        Y = reshape(x(Lagopts.ind.Y(1):Lagopts.ind.Y(2)), [K,Q]); 
-        Z = reshape(x(Lagopts.ind.Z(1):Lagopts.ind.Z(2)), [N,Q]);
-        eta = norm(Z - X*Y, 'fro')^2; 
-        
+
+
+function [Filter, L_eta_omega, R_eta_omega] = filter_up(Filter, etaj, omegaj)
+
+        Filter = [Filter, [etaj; omegaj]];%keeps track of all filter entries
+        [~, iL] = min(Filter(:,1));%find smallest eta index
+        [~, iR] = min(Filter(:,2));%find smallest omega index
+        L_eta_omega = Filter(iL,:); 
+        R_eta_omega = Filter(iR,:); 
+
 
 end
-
-
-function omega = omega_comp(x, Lambda, Lagopts)
-%compute omega = ||min{x - l, max{x-u, \nabla_x Lp(x,y)}}||
-    l = Lagopts.LB; 
-    u = Lagopts.UB; 
-    [~, L_grad] = augLag(x,Lambda, Lagopts);
-    omega = min(x-l, max(x-u, L_grad)); 
-    omega = norm(omega); 
-
-end
-
