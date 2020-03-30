@@ -20,7 +20,7 @@ eta_stat = (eta>eta_l*beta); % should be all zeros if acceptable
 omega_stat = (omega>omega_l - gamma*eta); %should be all zeros if acceptable 
 
 if sum(eta_stat)==0 || sum(omega_stat)==0
-    Filter = [Filter, [eta, omega]]; 
+    Filter = [Filter; [eta, omega]]; 
     add_stat = 1;
 else
     %if not acceptable do nothing and return the same filter

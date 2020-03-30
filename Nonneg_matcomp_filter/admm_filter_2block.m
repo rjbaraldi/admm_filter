@@ -33,6 +33,7 @@ Lagopts.M = M;
 Lagopts.LB = options.LB; 
 Lagopts.UB = options.UB;
 Lagopts.beta = beta; 
+Lagopts.gamma = gamma; 
 
 
 solver_opts.verbose=0;
@@ -51,10 +52,10 @@ k = 1;
 
 
 fprintf('%s  %s  %s   %s   %s  %s \n',...
-    'Iter', 'Lp - Lp+', '||M - XY||_F/||M||_F', '||x+ - x||_F', '||Lambda+ - Lambda||_F', 'rho-status'); 
+    'Iter', 'Lp - Lp+', 'Obj. Fcn. Val', '||x+ - x||_F', '||Lambda+ - Lambda||_F', 'rho-status'); 
 fprintf('------------------------------------------------------------------------------------------------\n');
     
-Filter = [eta_comp(xk, Lagopts);  omega_comp(xk,Lambdak, Lagopts)]; 
+Filter = [eta_comp(xk, Lagopts),  omega_comp(xk,Lambdak, Lagopts)]; 
 
 while(L_iter >= augLag_stop && OptTol>M_stop && k<IterMax) %keeping the same 'tolerance' constraints as in the paper
     %should be a term for lagrange multipliers in here - FO stationarity:
@@ -67,8 +68,10 @@ while(L_iter >= augLag_stop && OptTol>M_stop && k<IterMax) %keeping the same 'to
     Lambdaj = Lambdak; 
     omegaj = omega_comp(xj,Lambdak, Lagopts); 
     etaj = eta_comp(xj, Lagopts); 
-    UBD = max(min(Filter(2, :))/gamma, beta*min(Filter(1,:))); %not directly enforcing eta>0 but should be implicit I think? 
-    while (omegaj > Filter(2,end) && etaj > Filter(1,end)) || j==0 %j loop - cancels after one iteration right now
+    UBD = max(min(Filter(:,2))/gamma, beta*min(Filter(:,1))); %not directly enforcing eta>0 but should be implicit I think? 
+    [Filter, FilterAcceptCond] = filter_accept(Filter,etaj, omegaj, Lagopts);
+%     while (omegaj > Filter(2,end) && etaj > Filter(1,end)) || j==0 %j loop - cancels after one iteration right now
+    while ~FilterAcceptCond || j==0
         %block 1
         xj = minConf_SPG(@(b1)funcB1(b1, Lambdaj, Lagopts), xj, @(x)ProjB1(x,Lagopts), solver_opts);
         %block 2
@@ -79,10 +82,10 @@ while(L_iter >= augLag_stop && OptTol>M_stop && k<IterMax) %keeping the same 'to
         %compute filter points for xj
         etaj = eta_comp(xj, Lagopts); 
 %         omegaj = omega_comp(xj, Lambda, Lagopts); 
-        if etaj>UBD
+        if etaj>UBD %restoration switching condition
             %insert linesearch to find acceptable (etaj, omegaj) 
             Lagopts.rho = 2*Lagopts.rho; %increase rho before doing conditions? 
-            [xj, Filter] = lnSrch(xj, Lambdaj, Lagopts, Filter); %changed it to an eta search 
+            [xj, Filter, FilterAcceptCond] = lnSrch(xj, Lambdaj, Lagopts, Filter, UBD); %changed it to an eta search 
             etaj = eta_comp(xj, Lagopts);
 %             omegaj = omega_comp(xj, Lambdaj, Lagopts);
             
@@ -91,6 +94,8 @@ while(L_iter >= augLag_stop && OptTol>M_stop && k<IterMax) %keeping the same 'to
         else
 %         etaj = eta_comp(xj, Lagopts);
         omegaj = omega_comp(xj, Lambdaj, Lagopts); 
+        [Filter, FilterAcceptCond] = filter_accept(Filter,etaj, omegaj, Lagopts);
+        
         
         end
         [OptTol, Lambdaj] = stop_crit(xj, Lambdaj, Lagopts); 
@@ -107,14 +112,14 @@ while(L_iter >= augLag_stop && OptTol>M_stop && k<IterMax) %keeping the same 'to
   
  fprintf('%i    %1.4e      %1.4e         %1.4e       %1.4e          %1.4e  \n',...
     k, L_iter, OptTol, norm(xk - xj,'fro'), norm(Lambdak-Lambdaj,'fro'), Lagopts.rho);
-       
+%        solver_opts.optTol = solver_opts.optTol*.95; 
 
 
   
     %update etamin, omegamin
     if etaj>0
             %update filter entries here
-            [Filter, ~] = filter_up(Filter, etaj, omegaj);
+            [Filter, ~, ~] = filter_up(Filter);%should've already added the omegaj,etaj
 
             
     end
@@ -133,13 +138,26 @@ end
 
 
 
-function [Filter, L_eta_omega, R_eta_omega] = filter_up(Filter, etaj, omegaj)
+function [Filter, L_eta_omega, R_eta_omega] = filter_up(Filter)
 
-        Filter = [Filter, [etaj; omegaj]];%keeps track of all filter entries
-        [~, iL] = min(Filter(:,1));%find smallest eta index
-        [~, iR] = min(Filter(:,2));%find smallest omega index
-        L_eta_omega = Filter(iL,:); 
-        R_eta_omega = Filter(iR,:); 
+%         Filter = [Filter; [etaj, omegaj]];%update with new filter entries
+        [etaL, iL] = min(Filter(:,1));%find smallest eta index
+        omegaL = Filter(iL,2); 
+        L_eta_omega = [etaL, omegaL]; 
+        idxDomL = Filter(:,2)>omegaL;
+        Filter(idxDomL,:) = NaN; 
+        
+        [omegaR, iR] = min(Filter(:,2));%find smallest omega index
+        etaR = Filter(iR,1);
+        R_eta_omega = [etaR, omegaR]; 
+        idxDomR = Filter(:,1)>etaR;
+        Filter(idxDomR,:) = NaN;
+        
+        Filter = rmmissing(Filter); 
+        %or
+        %tf = Filter(~isnan(Filter)); Filter = reshape(Filter,
+        %numel(Filter)/2, 2); 
+        
 
 
 end

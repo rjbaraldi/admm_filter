@@ -16,8 +16,8 @@ M = W*H + cN;
 
 
 %initialize things in section 4.2 of NMFbilinearADMM.pdf
-admm_simp.rho = .1; %1.1
-admm_simp.gamma = .1; %.01/.1; %.01 seems to do a lot better without filter 
+admm_simp.rho = .01; %1.1
+admm_simp.gamma = .01; %.01/.1; %.01 seems to do a lot better without filter 
 admm_simp.beta = .9; %too much? eta<beta*eta_filter
 % % U is also a multiple of initial constraint violation
 
@@ -25,14 +25,14 @@ admm_simp.beta = .9; %too much? eta<beta*eta_filter
 %convex)
 admm_simp.alpha = norm(W,'fro');
 
-admm_simp.augLag_stop = 1e-4; %L_rho^(k+1) - L_rho^k <= augLag_stop
-admm_simp.dataM_stop = 1e-4; %||M - XY||_F/||M||_F <= dataM_stop for M data matrix
+admm_simp.augLag_stop = 1e-10; %L_rho^(k+1) - L_rho^k <= augLag_stop
+admm_simp.dataM_stop = 1e-10; %||M - XY||_F/||M||_F <= dataM_stop for M data matrix
 admm_simp.IterMax = 1000; 
 admm_simp.UBD = norm(M, 'fro')^2*.05; 
 admm_simp.dims =[N, Q, R K];
 
 
-p_miss = .25;
+p_miss = 0; %was .25
 num_miss = floor(p_miss*numel(M)); 
 ind_miss = randperm(numel(M), num_miss)';
 % P_omega = speye(numel(M));
@@ -76,7 +76,7 @@ fprintf('%s    2-Block: %1.4e  \n',...
 fprintf('%s    2-Block: %1.4e  \n',...
     '||W - M||_F',norm(Wf - Xf*Yf,'fro'));
 
-loglog(Filter(1,:), Filter(2,:), '*')
+loglog(Filter(:,1), Filter(:,2), '*')
 set(gca, 'Fontsize', 22, 'Fontweight', 'Bold')
 xlabel('\eta')
 ylabel('\omega')
@@ -200,9 +200,9 @@ function [OptTol, Lambdap] = stop_crit(x, varargin)
         
         Lambdap = Lambda + (Z-X*Y)*rho;
 
-        W_fro = norm(W, 'fro'); 
+%         W_fro = norm(W, 'fro'); 
         Wf_iter = norm(W - X*Y, 'fro'); 
-        OptTol = Wf_iter/W_fro; 
+        OptTol = Wf_iter; %/W_fro;
 end
 
 % function [x, alpha] = lnsrchFcn(x, Lambda, Lagopts)
@@ -252,7 +252,7 @@ end
 % 
 % end
 
-function [x, newFilter]= lnsrchFcn(x, Lambda, Lagopts, Filter)
+function [x, newFilter, FA]= lnsrchFcn(x, Lambda, Lagopts, Filter, UBD)
 N = Lagopts.dims(1);
 Q = Lagopts.dims(2); 
 % R = options.dims(3); 
@@ -287,8 +287,13 @@ alpha = 0.0;
 
 FA = 0; %0 if not acceptable, 1 if acceptable
 
+plt_alpha = 1; 
+if plt_alpha == 1
+    eta_store = eta_comp(x, Lagopts);
+    omega_store = omega_comp(x, Lambda, Lagopts); 
+end
 
-while ~FA %while not acceptable to filter, increase alpha until you are accepted
+while ~FA || alpha==1 %while not acceptable to filter, increase alpha until you are accepted
     %should always finish this with a new filter acceptable point
     alpha = alpha+.01;
     
@@ -298,11 +303,31 @@ while ~FA %while not acceptable to filter, increase alpha until you are accepted
     %compute eta and omega again
     eta_alpha = eta_comp([X(:); Y(:); Zf(:); W(:)], Lagopts); 
     omega_alpha = omega_comp([X(:); Y(:); Zf(:); W(:)], Lambda, Lagopts);
+    
+    if plt_alpha == 1
+        eta_store = [eta_store, eta_alpha]; 
+        omega_store = [omega_store, omega_alpha]; 
+    end
     %determine if filter point is acceptable
     [newFilter, FA] = filter_accept(Filter, eta_alpha, omega_alpha, Lagopts); 
     
 end
 fprintf('Infeasible eta; Conducting lnsrch. alpha=%1.4e   ', alpha); 
+
+if plt_alpha==1
+    figure;
+    hold on
+    loglog(Filter(:,1), Filter(:,2), 'r*')
+    loglog(eta_store, omega_store, 'b-*')
+    loglog(UBD*ones(15,1), linspace(max(newFilter(:,2)), -2, 15), 'k-*')
+    set(gca, 'Fontsize', 22, 'Fontweight', 'Bold')
+    xlabel('\eta')
+    ylabel('\omega')
+    title('\alpha progression')
+    hold off
+    
+end
+
 
 Zf = Z + alpha*D; 
 x = [X(:); Y(:); Zf(:); W(:)]; 
