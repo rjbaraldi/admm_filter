@@ -17,7 +17,7 @@ M = W*H + cN;
 
 %initialize things in section 4.2 of NMFbilinearADMM.pdf
 admm_simp.rho = .01; %1.1
-admm_simp.gamma = .01; %.01/.1; %.01 seems to do a lot better without filter 
+admm_simp.gamma = .1; %.01/.1; %.01 seems to do a lot better without filter 
 admm_simp.beta = .9; %too much? eta<beta*eta_filter
 % % U is also a multiple of initial constraint violation
 
@@ -25,14 +25,13 @@ admm_simp.beta = .9; %too much? eta<beta*eta_filter
 %convex)
 admm_simp.alpha = norm(W,'fro');
 
-admm_simp.augLag_stop = 1e-10; %L_rho^(k+1) - L_rho^k <= augLag_stop
-admm_simp.dataM_stop = 1e-10; %||M - XY||_F/||M||_F <= dataM_stop for M data matrix
+admm_simp.augLag_stop = 1e-5; %L_rho^(k+1) - L_rho^k <= augLag_stop
+admm_simp.dataM_stop = 1e-5; %||M - XY||_F/||M||_F <= dataM_stop for M data matrix
 admm_simp.IterMax = 1000; 
-admm_simp.UBD = norm(M, 'fro')^2*.05; 
 admm_simp.dims =[N, Q, R K];
 
 
-p_miss = 0; %was .25
+p_miss = .1; %was .25
 num_miss = floor(p_miss*numel(M)); 
 ind_miss = randperm(numel(M), num_miss)';
 % P_omega = speye(numel(M));
